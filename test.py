@@ -1,5 +1,3 @@
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
 import asyncio
 import json
 import os
@@ -19,97 +17,19 @@ from pyppeteer.errors import TimeoutError
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
 
+
 # Constants
 ENCODING_TYPE = "cl100k_base"
 LLM_MODEL = "gpt-4-0613"
 TEMPERATURE = 0
 
+# Load environment variables
+load_dotenv(find_dotenv())
 
 # Initialize global objects
 encoding = tiktoken.get_encoding(ENCODING_TYPE)
+llm = ChatOpenAI(model=LLM_MODEL, temperature=TEMPERATURE)
 
-_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            "You are a Security Web Assitant that helps to check if a website is phishing or not.",
-        ),
-        ("human", "{text}"),
-    ]
-)
-#_model = ChatOpenAI()
-_model = ChatOpenAI(model=LLM_MODEL, temperature=TEMPERATURE)
-
-phishing_page_insights_schema = [
-            {
-                "name": "phishing_page_insights_extractor",
-                "description": "Extract and determine if a webpage is a potential phishing page",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "phishing_reason": {
-                            "type": "string",
-                            "description": "What is the determined reason for the phishing page or 'Unknown' if it is not clear",
-                        },
-                        "safe_reason": {
-                            "type": "string",
-                            "description": "What is the determined reasos why this is not a phishing page or 'Unknown' if it is not clear",
-                        },
-                        "likelihood": {
-                            "type": "string",
-                            "description": "What is the likelihood this is a phishing page",
-                            "enum": ["High", "Medium", "Low", "Unknown"]
-                        },
-                         "security_score": {
-                            "type": "integer",
-                            "description": "What is the determined security score for the phishing page on a scale of 10 to 100. 100 being phishing and 10 being safe",
-                            "enum": ["10", "20","30","40","50","60","70","80","90","100"]
-                        },
-                         "security_summary": {
-                            "type": "string",
-                            "description": "What is the determined security summary for the phishing page or 'Unknown' if it is not clear",
-                        },
-                        "likelihood_reason": {
-                            "type": "string",
-                            "description": "The explanation for why the likelihood was  or 'Unknown' if it is not clear"
-                        },
-                        "malicious_url": {
-                            "type": "string",
-                            "description": "The url of the malicious page or 'Unknown' if it is not clear"
-                        },
-                    },
-                    "required": ["phishing_reason", "safe_reason", "likelihood", "likelihood_reason","security_score","security_summary"],
-                }
-            }
-        ]
-    
-def analyze_whois(domain):
-    analysis = {}
-    try:
-        w = whois.whois(domain)
-        
-        # Analyzing Registration Date
-        if w.creation_date:
-            if isinstance(w.creation_date, list):
-                creation_date = w.creation_date[0]
-            else:
-                creation_date = w.creation_date
-            
-            age = (datetime.now() - creation_date).days
-            analysis['Domain_Age_In_Days'] = age
-
-        # Analyzing Registrar
-        if w.registrar:
-            analysis['Domain_Registrar'] = w.registrar
-        
-        # Analyzing Country
-        if w.country:
-            analysis['Domain_Registered_Country'] = w.country
-
-    except Exception as e:
-        analysis['Error_Message'] = str(e)
-        
-    return analysis
 
 async def extract_elements(url):
     browser = None
@@ -248,7 +168,7 @@ def phishing_insights_extractor_tool(report):
     if num_tokens > 7500:
         report = truncate_to_max_tokens(report, encoding, max_tokens=7500)
         
-    first_response = _model.predict_messages([HumanMessage(content=report)],
+    first_response = llm.predict_messages([HumanMessage(content=report)],
                                           functions=phishing_page_insights_schema)
 
     content = first_response.content
@@ -266,26 +186,97 @@ def phishing_insights_extractor_tool(report):
         print(f"Content that caused the error: {report}")
         return None
 
-extracted = tldextract.extract("{text}")
+def analyze_whois(domain):
+    analysis = {}
+    try:
+        w = whois.whois(domain)
+        
+        # Analyzing Registration Date
+        if w.creation_date:
+            if isinstance(w.creation_date, list):
+                creation_date = w.creation_date[0]
+            else:
+                creation_date = w.creation_date
+            
+            age = (datetime.now() - creation_date).days
+            analysis['Domain_Age_In_Days'] = age
 
-urldata= "{text}"
+        # Analyzing Registrar
+        if w.registrar:
+            analysis['Domain_Registrar'] = w.registrar
+        
+        # Analyzing Country
+        if w.country:
+            analysis['Domain_Registered_Country'] = w.country
 
-domain = f"{extracted.domain}.{extracted.suffix}"
-host = f"{extracted.subdomain}.{domain}" if extracted.subdomain else domain
-rendered_content = extract_elements("{text}")
+    except Exception as e:
+        analysis['Error_Message'] = str(e)
+        
+    return analysis
 
-dns_record = fetch_dns_records(domain)
-tls_record = fetch_tls_certificate(host)
-who_is_records = analyze_whois(domain)
+phishing_page_insights_schema = [
+            {
+                "name": "phishing_page_insights_extractor",
+                "description": "Extract and determine if a webpage is a potential phishing page",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "phishing_reason": {
+                            "type": "string",
+                            "description": "What is the determined reason for the phishing page or 'Unknown' if it is not clear",
+                        },
+                        "safe_reason": {
+                            "type": "string",
+                            "description": "What is the determined reasos why this is not a phishing page or 'Unknown' if it is not clear",
+                        },
+                        "likelihood": {
+                            "type": "string",
+                            "description": "What is the likelihood this is a phishing page",
+                            "enum": ["High", "Medium", "Low", "Unknown"]
+                        },
+                         "security_score": {
+                            "type": "integer",
+                            "description": "What is the determined security score for the phishing page on a scale of 10 to 100. 100 being phishing and 10 being safe",
+                            "enum": ["10", "20","30","40","50","60","70","80","90","100"]
+                        },
+                         "security_summary": {
+                            "type": "string",
+                            "description": "What is the determined security summary for the phishing page or 'Unknown' if it is not clear",
+                        },
+                        "likelihood_reason": {
+                            "type": "string",
+                            "description": "The explanation for why the likelihood was  or 'Unknown' if it is not clear"
+                        },
+                        "malicious_url": {
+                            "type": "string",
+                            "description": "The url of the malicious page or 'Unknown' if it is not clear"
+                        },
+                    },
+                    "required": ["phishing_reason", "safe_reason", "likelihood", "likelihood_reason","security_score","security_summary"],
+                }
+            }
+        ]
+    
+    
+async def main():
+    print("Starting...")
+    url = "https://att-101438-103191.weeblysite.com/"
+    extracted = tldextract.extract(url)
 
-print(rendered_content)
+    domain = f"{extracted.domain}.{extracted.suffix}"
+    host = f"{extracted.subdomain}.{domain}" if extracted.subdomain else domain
+    rendered_content = await extract_elements(url)
+
+    dns_record = fetch_dns_records(domain)
+    tls_record = fetch_tls_certificate(host)
+    who_is_records = analyze_whois(domain)
+
+    print(rendered_content)
      # Construct the input string
-constructed_input = f"{urldata} {dns_record} {tls_record} {who_is_records} {rendered_content}"
-content_dict = phishing_insights_extractor_tool(constructed_input)
-print(content_dict)
+    constructed_input = f"{url} {dns_record} {tls_record} {who_is_records} {rendered_content}"
+
+    phishing_insights_extractor_tool(constructed_input)
 
 
-
-# if you update this, you MUST also update ../pyproject.toml
-# with the new `tool.langserve.export_attr`
-chain = _prompt | _model
+# This is how you can run the main async function.
+asyncio.run(main())
