@@ -18,7 +18,13 @@ from pyppeteer import launch
 from pyppeteer.errors import TimeoutError
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
+from langsmith.run_helpers import traceable
 
+os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+os.environ['LANGCHAIN_API_KEY'] = 'LANGCHAIN_API_KEY'
+os.environ['LANGCHAIN_PROJECT'] = 'no-phish-ai'
+os.environ['OPENAI_API_KEY'] = 'OPENAI_API_KEY'
 
 # Constants
 ENCODING_TYPE = "cl100k_base"
@@ -97,6 +103,7 @@ async def extract_elements(url):
             await browser.close()
         return None
 
+@traceable(run_type="tool")
 def fetch_dns_records(domain):
     record_data = {}
     
@@ -116,6 +123,7 @@ def fetch_dns_records(domain):
 
     return record_data
 
+@traceable(run_type="tool")
 def fetch_tls_certificate(host, port=443):
     cert_details = {}
     
@@ -159,6 +167,7 @@ def truncate_to_max_tokens(text, encoding, max_tokens=7500):
     else:
         return text
 
+@traceable(run_type="llm")
 def phishing_insights_extractor_tool(report):
     
     # Get the token count
@@ -188,6 +197,7 @@ def phishing_insights_extractor_tool(report):
         print(f"Content that caused the error: {report}")
         return None
 
+@traceable(run_type="tool")
 def analyze_whois(domain):
     analysis = {}
     try:
@@ -259,7 +269,7 @@ phishing_page_insights_schema = [
             }
         ]
 
-
+@traceable(run_type="chain")
 async def analyze_url(url):
     extracted = tldextract.extract(url)
     domain = f"{extracted.domain}.{extracted.suffix}"
